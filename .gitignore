@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.env
+.env.*
+*.pem
+*.key
+*.token
+*.log
+
+.DS_Store
+.vscode/
+
+mistral7b_oran_sft/
+**/checkpoint-*/
+
+# Large local model artifacts
+*.safetensors
+*.bin
