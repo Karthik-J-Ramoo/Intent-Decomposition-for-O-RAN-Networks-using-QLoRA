@@ -17,6 +17,10 @@ __pycache__/
 mistral7b_oran_sft/
 **/checkpoint-*/
 
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
 # Large local model artifacts
 *.safetensors
 *.bin

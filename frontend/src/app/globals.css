@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --panel: #ffffff;
+  --panel-border: #e2e8f0;
+  --accent: #7c9cf0;
+  --accent-soft: #e8efff;
+  --muted: #64748b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: radial-gradient(1200px 600px at 10% 0%, #eef2ff 0%, #f8fafc 45%, #f1f5f9 100%);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+}

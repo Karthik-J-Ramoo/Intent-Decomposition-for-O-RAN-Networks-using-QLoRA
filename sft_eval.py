@@ -5,7 +5,13 @@ from typing import Any, Dict, List, Tuple
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from sft_common import DEFAULT_SYSTEM_PROMPT, load_raw_dataset, prepare_sft_datasets, resolve_device_settings
+from sft_common import (
+    DEFAULT_SYSTEM_PROMPT,
+    build_user_prompt,
+    load_raw_dataset,
+    resolve_device_settings,
+    split_dataset,
+)
 
 
 def parse_args():
@@ -25,6 +31,8 @@ def parse_args():
     parser.add_argument("--raw-text", default="")
     parser.add_argument("--interactive", action="store_true", default=False)
     parser.add_argument("--no-validate", action="store_true", default=False)
+    parser.add_argument("--network-state-json", default="")
+    parser.add_argument("--sla-status-json", default="")
     return parser.parse_args()
 
 
@@ -92,10 +100,28 @@ def validate_policy_output_structure(obj: Dict[str, Any]) -> Tuple[bool, List[st
     return len(errors) == 0, errors
 
 
-def infer_policy(model, tokenizer, raw_text: str, max_new_tokens: int) -> str:
+def parse_json_blob(label: str, value: str) -> Dict[str, Any]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON for {label}: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    return parsed
+
+
+def infer_policy(
+    model,
+    tokenizer,
+    raw_text: str,
+    network_state: Dict[str, Any],
+    sla_status: Dict[str, Any],
+    max_new_tokens: int,
+) -> str:
+    user_prompt = build_user_prompt(raw_text, network_state, sla_status)
     msgs = [
         {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
-        {"role": "user", "content": raw_text},
+        {"role": "user", "content": user_prompt},
     ]
     try:
         prompt = tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
@@ -115,8 +141,16 @@ def infer_policy(model, tokenizer, raw_text: str, max_new_tokens: int) -> str:
     return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
-def run_single_inference(model, tokenizer, raw_text: str, max_new_tokens: int, validate: bool):
-    pred = infer_policy(model, tokenizer, raw_text, max_new_tokens)
+def run_single_inference(
+    model,
+    tokenizer,
+    raw_text: str,
+    network_state: Dict[str, Any],
+    sla_status: Dict[str, Any],
+    max_new_tokens: int,
+    validate: bool,
+):
+    pred = infer_policy(model, tokenizer, raw_text, network_state, sla_status, max_new_tokens)
     print("\n=== Model Output ===")
     print(pred)
 
@@ -156,7 +190,19 @@ def main():
     )
 
     if args.raw_text or args.interactive:
+        network_state: Dict[str, Any] | None = None
+        sla_status: Dict[str, Any] | None = None
+
+        if args.network_state_json:
+            network_state = parse_json_blob("network_state", args.network_state_json)
+        if args.sla_status_json:
+            sla_status = parse_json_blob("sla_status", args.sla_status_json)
+
         if args.interactive:
+            if network_state is None:
+                network_state = parse_json_blob("network_state", input("Network State JSON: "))
+            if sla_status is None:
+                sla_status = parse_json_blob("sla_status", input("SLA Status JSON: "))
             print("Enter raw intent text (empty line to exit):")
             while True:
                 raw_text = input("> ").strip()
@@ -166,35 +212,37 @@ def main():
                     model,
                     tokenizer,
                     raw_text,
+                    network_state,
+                    sla_status,
                     args.max_new_tokens,
                     validate=not args.no_validate,
                 )
         else:
+            if network_state is None or sla_status is None:
+                raise ValueError("--network-state-json and --sla-status-json are required")
             run_single_inference(
                 model,
                 tokenizer,
                 args.raw_text,
+                network_state,
+                sla_status,
                 args.max_new_tokens,
                 validate=not args.no_validate,
             )
         return
 
     raw_dataset = load_raw_dataset(args.dataset_repo, args.local_json_path, args.use_hf_repo)
-    _, eval_dataset = prepare_sft_datasets(
-        raw_dataset,
-        tokenizer,
-        DEFAULT_SYSTEM_PROMPT,
-        test_size=args.test_size,
-        seed=args.seed,
-    )
+    _, eval_dataset = split_dataset(raw_dataset, test_size=args.test_size, seed=args.seed)
 
     n = min(args.n_samples, len(eval_dataset))
     valid_json = 0
     valid_schema = 0
 
     for i in range(n):
-        raw_text = eval_dataset[i]["raw_text"]
-        pred = infer_policy(model, tokenizer, raw_text, args.max_new_tokens)
+        raw_text = eval_dataset[i]["intent"]["raw_text"]
+        network_state = eval_dataset[i]["network_state"]
+        sla_status = eval_dataset[i]["sla_status"]
+        pred = infer_policy(model, tokenizer, raw_text, network_state, sla_status, args.max_new_tokens)
         obj = extract_first_json(pred)
 
         if obj is not None:

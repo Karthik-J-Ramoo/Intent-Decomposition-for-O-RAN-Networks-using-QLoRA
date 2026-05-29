@@ -9,9 +9,24 @@ from transformers import AutoTokenizer, BitsAndBytesConfig
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are an O-RAN policy decomposition engine. Given a raw intent text, "
-    "output ONLY a valid JSON object for policy_output with exactly these top-level keys: "
-    "SMO, RIC, CU, DU, RU. Do not add explanations, markdown, or extra keys."
+    "network state, and SLA status, output ONLY a valid JSON object for policy_output "
+    "with exactly these top-level keys: SMO, RIC, CU, DU, RU. Do not add explanations, "
+    "markdown, or extra keys."
 )
+
+
+def build_user_prompt(raw_text: str, network_state: Dict[str, Any], sla_status: Dict[str, Any]) -> str:
+    network_state_json = json.dumps(network_state, separators=(",", ":"), ensure_ascii=False)
+    sla_status_json = json.dumps(sla_status, separators=(",", ":"), ensure_ascii=False)
+    return (
+        "Intent: "
+        + raw_text
+        + "\nNetwork State: "
+        + network_state_json
+        + "\nSLA Status: "
+        + sla_status_json
+        + "\nReturn ONLY policy_output JSON with keys SMO, RIC, CU, DU, RU."
+    )
 
 
 def load_raw_dataset(repo_id: str, local_json_path: str, use_hf_repo: bool):
@@ -66,7 +81,11 @@ def to_sft_record(
     tokenizer,
     system_prompt: str,
 ) -> Dict[str, str]:
-    user_text = example["intent"]["raw_text"]
+    user_text = build_user_prompt(
+        example["intent"]["raw_text"],
+        example["network_state"],
+        example["sla_status"],
+    )
     assistant_text = json.dumps(example["policy_output"], separators=(",", ":"), ensure_ascii=False)
     messages = [
         {"role": "system", "content": system_prompt},
