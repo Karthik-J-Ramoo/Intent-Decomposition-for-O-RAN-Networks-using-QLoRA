@@ -3,9 +3,18 @@ import time
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 SERVICE_NAME = "oran-intent-decomposition-api"
 DEFAULT_MODEL_PATH = "mistral7b_oran_sft"
