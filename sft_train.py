@@ -25,7 +25,7 @@ def parse_args():
         "--dataset-repo",
         default="HikkenNoAce/Intent_Decomposition_to_Sub_Intents_for_O_RAN_networks",
     )
-    parser.add_argument("--use-hf-repo", action="store_true", default=True)
+    parser.add_argument("--use-hf-repo", action="store_true", default=False)
     parser.add_argument("--local-json-path", default="dataset.json")
     parser.add_argument("--output-dir", default="./mistral7b_oran_sft")
     parser.add_argument("--seed", type=int, default=42)
