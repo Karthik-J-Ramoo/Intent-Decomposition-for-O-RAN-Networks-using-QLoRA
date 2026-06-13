@@ -1,0 +1,54 @@
+name: Build and run frontend
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image
+        run: |
+          docker build -f frontend/Dockerfile -t oran-frontend ./frontend
+
+      - name: Run frontend container
+        run: |
+          docker run --name oran-frontend-ci -d -p 3000:3000 oran-frontend
+
+      - name: Wait for homepage
+        run: |
+          set -e
+          MAX_ATTEMPTS=60
+          SLEEP_SECONDS=2
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            if curl -sS http://localhost:3000 | grep -q "O-RAN Intent Decomposition Demo"; then
+              echo "Homepage check passed"
+              exit 0
+            fi
+            echo "Waiting for frontend... ($i/$MAX_ATTEMPTS)"
+            sleep $SLEEP_SECONDS
+          done
+          echo "Frontend did not become ready"
+          echo "=== docker ps -a ==="
+          docker ps -a || true
+          echo "=== docker inspect oran-frontend-ci ==="
+          docker inspect oran-frontend-ci || true
+          echo "=== last 500 lines of container logs ==="
+          docker logs --tail 500 oran-frontend-ci || true
+          exit 1
+
+      - name: Collect logs
+        if: always()
+        run: docker logs --tail 200 oran-frontend-ci || true
+
+      - name: Stop and remove container
+        if: always()
+        run: docker rm -f oran-frontend-ci || true
