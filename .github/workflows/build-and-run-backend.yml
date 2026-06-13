@@ -27,19 +27,26 @@ jobs:
         run: |
           docker run --name oran-backend-ci -d -p 8000:8000 -e SKIP_MODEL_LOAD=1 oran-backend-dev
 
-      - name: Wait for /health
+      - name: Wait for /health (with diagnostics)
         run: |
           set -e
-          for i in $(seq 1 30); do
-            if curl -sS http://localhost:8000/health | grep -q '"status".*"ok"'; then
+          MAX_ATTEMPTS=60
+          SLEEP_SECONDS=2
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            if curl -sS http://localhost:8000/health 2>/dev/null | grep -q '"status".*"ok"'; then
               echo "Health check passed"
               exit 0
             fi
-            echo "Waiting for service... ($i)"
-            sleep 2
+            echo "Waiting for service... ($i/$MAX_ATTEMPTS)"
+            sleep $SLEEP_SECONDS
           done
-          echo "Service did not become ready"
-          docker logs --tail 200 oran-backend-ci || true
+          echo "Service did not become ready after $((MAX_ATTEMPTS * SLEEP_SECONDS))s"
+          echo "=== docker ps -a ==="
+          docker ps -a || true
+          echo "=== docker inspect oran-backend-ci ==="
+          docker inspect oran-backend-ci || true
+          echo "=== last 500 lines of container logs ==="
+          docker logs --tail 500 oran-backend-ci || true
           exit 1
 
       - name: Collect logs
