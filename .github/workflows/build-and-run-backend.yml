@@ -1,0 +1,51 @@
+name: Build and run backend
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build backend image (dev)
+        run: |
+          # Use the lightweight dev Dockerfile to avoid installing large ML packages in CI
+          docker build -f backend/Dockerfile.dev -t oran-backend-dev .
+
+      - name: Run backend container (skip model load)
+        run: |
+          docker run --name oran-backend-ci -d -p 8000:8000 -e SKIP_MODEL_LOAD=1 oran-backend-dev
+
+      - name: Wait for /health
+        run: |
+          set -e
+          for i in $(seq 1 30); do
+            if curl -sS http://localhost:8000/health | grep -q '"status".*"ok"'; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for service... ($i)"
+            sleep 2
+          done
+          echo "Service did not become ready"
+          docker logs --tail 200 oran-backend-ci || true
+          exit 1
+
+      - name: Collect logs
+        if: always()
+        run: docker logs --tail 200 oran-backend-ci || true
+
+      - name: Stop and remove container
+        if: always()
+        run: docker rm -f oran-backend-ci || true
